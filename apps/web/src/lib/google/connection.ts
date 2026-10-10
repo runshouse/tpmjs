@@ -28,6 +28,17 @@ export const GOOGLE_TOOLS = [
     description: 'Send an email from Gmail',
     scope: 'https://www.googleapis.com/auth/gmail.send',
   },
+  {
+    name: 'analytics_properties',
+    description: 'List the Google Analytics 4 accounts and properties this Google account can read',
+    scope: 'https://www.googleapis.com/auth/analytics.readonly',
+  },
+  {
+    name: 'analytics_report',
+    description:
+      'Run a Google Analytics 4 report for one property: metrics, optionally split by dimensions, over a date range',
+    scope: 'https://www.googleapis.com/auth/analytics.readonly',
+  },
 ] as const;
 
 export const GOOGLE_IDENTITY_SCOPES = ['openid', 'https://www.googleapis.com/auth/userinfo.email'];

@@ -2,6 +2,16 @@ import { prisma } from '@tpmjs/db';
 import { z } from 'zod';
 import { GOOGLE_TOOLS, googleApi, googleToken } from './connection';
 
+/** GA4 accepts ISO dates and its relative forms: today, yesterday, NdaysAgo. */
+const analyticsDate = z
+  .string()
+  .regex(
+    /^(\d{4}-\d{2}-\d{2}|today|yesterday|\d{1,4}daysAgo)$/,
+    'YYYY-MM-DD, today, yesterday, or NdaysAgo'
+  );
+/** GA4 API names of metrics and dimensions, such as activeUsers, sessions, or pagePath. */
+const analyticsField = z.string().regex(/^[A-Za-z][A-Za-z0-9_:]{0,99}$/);
+
 const schemas = {
   drive_search: z.object({
     query: z.string().min(1).max(200),
@@ -17,6 +27,17 @@ const schemas = {
     to: z.array(z.email()).min(1).max(20),
     subject: z.string().min(1).max(300),
     body: z.string().min(1).max(100_000),
+  }),
+  analytics_properties: z.object({ pageToken: z.string().max(1000).optional() }),
+  analytics_report: z.object({
+    property: z
+      .string()
+      .regex(/^(properties\/)?\d{1,20}$/, 'A GA4 property ID, such as properties/123'),
+    startDate: analyticsDate,
+    endDate: analyticsDate,
+    metrics: z.array(analyticsField).min(1).max(10),
+    dimensions: z.array(analyticsField).max(9).optional(),
+    limit: z.number().int().min(1).max(1000).optional(),
   }),
 } as const;
 
@@ -51,6 +72,36 @@ export const GOOGLE_TOOL_SCHEMAS: Record<string, unknown> = {
       body: { type: 'string' },
     },
     required: ['to', 'subject', 'body'],
+  },
+  analytics_properties: {
+    type: 'object',
+    properties: { pageToken: { type: 'string' } },
+  },
+  analytics_report: {
+    type: 'object',
+    properties: {
+      property: {
+        type: 'string',
+        description: 'GA4 property, as properties/123 or 123 (from analytics_properties)',
+      },
+      startDate: {
+        type: 'string',
+        description: 'YYYY-MM-DD, today, yesterday, or NdaysAgo (for example 7daysAgo)',
+      },
+      endDate: { type: 'string', description: 'YYYY-MM-DD, today, yesterday, or NdaysAgo' },
+      metrics: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'GA4 metric API names, for example activeUsers, sessions, screenPageViews',
+      },
+      dimensions: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Optional GA4 dimension API names, for example date, pagePath, sessionSource',
+      },
+      limit: { type: 'integer', description: 'Most rows to return (1-1000, default 100)' },
+    },
+    required: ['property', 'startDate', 'endDate', 'metrics'],
   },
 };
 
@@ -231,6 +282,81 @@ export async function executeGoogleTool(
           body: JSON.stringify({ raw: Buffer.from(raw).toString('base64url') }),
         })
       );
+    }
+    case 'analytics_properties': {
+      const args = schemas.analytics_properties.parse(input);
+      const result = JSON.parse(
+        await googleApi(
+          token,
+          url('https://analyticsadmin.googleapis.com/v1beta/accountSummaries', {
+            pageSize: '200',
+            ...(args.pageToken ? { pageToken: args.pageToken } : {}),
+          })
+        )
+      ) as {
+        accountSummaries?: {
+          account: string;
+          displayName?: string;
+          propertySummaries?: { property: string; displayName?: string; propertyType?: string }[];
+        }[];
+        nextPageToken?: string;
+      };
+      return {
+        accounts: (result.accountSummaries ?? []).map((summary) => ({
+          account: summary.account,
+          name: summary.displayName,
+          properties: (summary.propertySummaries ?? []).map((property) => ({
+            property: property.property,
+            name: property.displayName,
+            type: property.propertyType,
+          })),
+        })),
+        nextPageToken: result.nextPageToken,
+      };
+    }
+    case 'analytics_report': {
+      const args = schemas.analytics_report.parse(input);
+      const property = args.property.startsWith('properties/')
+        ? args.property
+        : `properties/${args.property}`;
+      const dimensions = args.dimensions ?? [];
+      const result = JSON.parse(
+        await googleApi(
+          token,
+          `https://analyticsdata.googleapis.com/v1beta/${property}:runReport`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              dateRanges: [{ startDate: args.startDate, endDate: args.endDate }],
+              metrics: args.metrics.map((name) => ({ name })),
+              dimensions: dimensions.map((name) => ({ name })),
+              limit: String(args.limit ?? 100),
+              metricAggregations: ['TOTAL'],
+            }),
+          }
+        )
+      ) as {
+        rows?: { dimensionValues?: { value?: string }[]; metricValues?: { value?: string }[] }[];
+        totals?: { metricValues?: { value?: string }[] }[];
+        rowCount?: number;
+        metadata?: { currencyCode?: string; timeZone?: string };
+      };
+      // Rows as named values, so a reader does not have to line up headers with positions.
+      const named = (names: string[], values: { value?: string }[] | undefined) =>
+        Object.fromEntries(names.map((name, index) => [name, values?.[index]?.value ?? null]));
+      return {
+        property,
+        dateRange: { startDate: args.startDate, endDate: args.endDate },
+        rows: (result.rows ?? []).map((row) => ({
+          ...named(dimensions, row.dimensionValues),
+          ...named(args.metrics, row.metricValues),
+        })),
+        totals: result.totals?.[0] ? named(args.metrics, result.totals[0].metricValues) : null,
+        rowCount: result.rowCount ?? 0,
+        timeZone: result.metadata?.timeZone,
+        currencyCode: result.metadata?.currencyCode,
+      };
     }
     default:
       throw new Error('Unknown Google tool');

@@ -18,7 +18,7 @@ export async function googleCollections(userId: string) {
     id: googleCollectionId(connection.id),
     name: `Google Workspace · ${connection.email}`,
     description:
-      'Drive and Gmail tools linked to this Google account. Access depends on Google scopes and this app grant.',
+      'Drive, Gmail and Google Analytics tools linked to this Google account. Access depends on Google scopes and this app grant.',
     tools: GOOGLE_TOOLS.filter((tool) => connection.scopes.includes(tool.scope)).map((tool) => ({
       id: `${googlePackageName(connection.id)}::${tool.name}`,
       name: tool.name,

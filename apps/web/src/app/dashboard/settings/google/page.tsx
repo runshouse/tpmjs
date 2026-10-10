@@ -24,6 +24,8 @@ export default function GoogleSettingsPage() {
     'drive_read',
     'gmail_search',
     'gmail_read',
+    'analytics_properties',
+    'analytics_report',
   ]);
   const [configured, setConfigured] = useState(false);
   const [loading, setLoading] = useState(true);

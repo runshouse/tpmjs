@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { Space_Grotesk, Space_Mono } from 'next/font/google';
 import { Toaster } from 'sonner';
 import { AppFooter } from '../components/AppFooter';
-import { DontoAnalytics } from '../components/DontoAnalytics';
+import { GoogleAnalytics } from '../components/GoogleAnalytics';
 import { ThemeProvider } from '../components/providers/ThemeProvider';
 import { SWRProvider } from '../components/SWRProvider';
 import './globals.css';
@@ -163,7 +163,7 @@ export default function RootLayout({
             <Toaster position="bottom-right" richColors closeButton />
           </SWRProvider>
         </ThemeProvider>
-        <DontoAnalytics />
+        <GoogleAnalytics />
       </body>
     </html>
   );

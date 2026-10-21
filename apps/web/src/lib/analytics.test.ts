@@ -18,23 +18,21 @@ describe('activation-funnel analytics', () => {
     expect(() => trackEvent('tool_view', { tool: 'pkg::tool' })).not.toThrow();
   });
 
-  it('is fail-open before Umami loads or when it throws', () => {
+  it('is fail-open before gtag loads or when it throws', () => {
     vi.stubGlobal('window', {});
     expect(() => trackEvent('tool_view')).not.toThrow();
 
     vi.stubGlobal('window', {
-      umami: {
-        track: () => {
-          throw new Error('analytics unavailable');
-        },
+      gtag: () => {
+        throw new Error('analytics unavailable');
       },
     });
     expect(() => trackEvent('tool_view')).not.toThrow();
   });
 
   it('emits privacy-safe, stable activation events', () => {
-    const track = vi.fn();
-    vi.stubGlobal('window', { umami: { track } });
+    const gtag = vi.fn();
+    vi.stubGlobal('window', { gtag });
 
     trackInstallCommandCopy('tool-id', 'mcp', 'Connect with Claude Code');
     trackPlaygroundExecution('tool-id', 'success');
@@ -42,28 +40,29 @@ describe('activation-funnel analytics', () => {
     trackSignup('started');
     trackSignup('completed');
 
-    expect(track.mock.calls).toEqual([
+    expect(gtag.mock.calls).toEqual([
       [
+        'event',
         'install_command_copy',
         { tool: 'tool-id', surface: 'mcp', snippet: 'Connect with Claude Code' },
       ],
-      ['playground_execute', { tool: 'tool-id', outcome: 'success' }],
-      ['collection_mcp_copy', { collection: 'collection-id', format: 'http_url' }],
-      ['signup_started', { method: 'email' }],
-      ['signup_completed', { method: 'email' }],
+      ['event', 'playground_execute', { tool: 'tool-id', outcome: 'success' }],
+      ['event', 'collection_mcp_copy', { collection: 'collection-id', format: 'http_url' }],
+      ['event', 'signup_started', { method: 'email' }],
+      ['event', 'signup_completed', { method: 'email' }],
     ]);
   });
 
   it('records exactly one terminal outcome for each playground attempt', () => {
-    const track = vi.fn();
-    vi.stubGlobal('window', { umami: { track } });
+    const gtag = vi.fn();
+    vi.stubGlobal('window', { gtag });
     const recordOutcome = createPlaygroundOutcomeRecorder('tool-id');
 
     recordOutcome('success');
     recordOutcome('failure');
 
-    expect(track).toHaveBeenCalledOnce();
-    expect(track).toHaveBeenCalledWith('playground_execute', {
+    expect(gtag).toHaveBeenCalledOnce();
+    expect(gtag).toHaveBeenCalledWith('event', 'playground_execute', {
       tool: 'tool-id',
       outcome: 'success',
     });

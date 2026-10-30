@@ -429,8 +429,7 @@ export const describeImage = tool({
     const use =
       provider ??
       (envValue('OPENAI_API_KEY') ? 'openai' : envValue('GEMINI_API_KEY') ? 'gemini' : null);
-    if (!use)
-      throw new Error('describeImage needs OPENAI_API_KEY, GEMINI_API_KEY or MAGIC_HOUR_API_KEY.');
+    if (!use) throw new Error('describeImage needs OPENAI_API_KEY or GEMINI_API_KEY.');
     const answer =
       use === 'openai'
         ? await describeWithOpenAI(imageUrl, question)
